@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024 Michael Ortmann
+
+.{
+    .name = "zstatus",
+    .version = "0.0.1",
+    .dependencies = .{
+        .zeit = .{
+            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.4.3.tar.gz",
+            .hash = "1220b2fb6ce8df3e8fe244220199a932e1982d717f04f1127526201fa9be3c421ab2",
+        },
+    },
+    .paths = .{""},
+}

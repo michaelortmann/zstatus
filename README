@@ -1,0 +1,34 @@
+Description:
+
+  zstatus is a swaybar status command in Zig.
+
+  It is tailored to my specific needs.
+
+  It updates the time every second and the temperature every 30 minutes.
+
+Usage:
+
+  $ zig build
+
+  Edit .config/sway/config
+
+    status_command /path/to/zstatus
+
+License:
+
+  MIT License
+  Copyright (c) 2024 Michael Ortmann
+
+Website:
+
+  https://github.com/michaelortmann/zstatus
+
+Links and Thanks to everyone involved there:
+
+  https://ziglang.org/
+  https://wttr.in/
+  https://swaywm.org/
+  https://github.com/rockorager/zeit
+
+Enjoy,
+Michael
