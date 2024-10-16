@@ -44,7 +44,7 @@ pub fn main() !void {
                     storage.clearRetainingCapacity();
                 }
             } else |err| switch (err) {
-                error.EndOfStream => std.log.debug("err {}", .{err}),
+                error.ConnectionRefused, error.ConnectionTimedOut, error.EndOfStream => std.log.debug("err {}", .{err}),
                 else => return err,
             }
 
