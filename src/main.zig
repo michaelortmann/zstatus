@@ -24,14 +24,8 @@ pub fn main() !void {
     const fetch_options = std.http.Client.FetchOptions{
         .response_storage = .{ .dynamic = &storage },
         // Hardcode never dies
-        .location = .{ .url = "http://wttr.in/Zürich?format=%t" },
+        .location = .{ .url = "https://api.met.no/weatherapi/locationforecast/2.0/?lat=47.374&lon=8.531" },
         .keep_alive = false,
-        .headers = .{
-            // Override user agent to stop wttr.in from redirecting to https
-            // https://github.com/chubin/wttr.in/pull/1021
-            // https://github.com/ziglang/zig/issues/21636
-            .user_agent = .{ .override = "curl/8.10.1 (compatible; zig/" ++ builtin.zig_version_string ++ " (std.http))" },
-        },
     };
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
     while (zeit.instant(.{})) |now| {
@@ -40,7 +34,11 @@ pub fn main() !void {
             // https://ziglang.org/documentation/master/#try
             if (client.fetch(fetch_options)) |fetch_result| {
                 if (fetch_result.status == .ok) {
-                    result_temperature = storage.items;
+                    // result_temperature = storage.items;
+                    var i = std.mem.indexOf(u8, storage.items[438..], ",\"air_temperature\":");
+                    const start = 438 + i.? + 19;
+                    i = std.mem.indexOf(u8, storage.items[start..], ",");
+                    result_temperature = storage.items[start .. start + i.?];
                     storage.clearRetainingCapacity();
                 }
             } else |err| switch (err) {
@@ -58,7 +56,7 @@ pub fn main() !void {
         //     Each line of text printed to stdout from this command will be displayed
         // by "line" a write to stdout is meant, not \n buffered line reading
         _ = try buffered_writer.write(result_temperature);
-        try dt_zeit.strftime(buffered_writer.writer(), " %a %d %H:%M:%S");
+        try dt_zeit.strftime(buffered_writer.writer(), "°C %a %d %H:%M:%S");
         try buffered_writer.flush();
 
         // sleep until next second
