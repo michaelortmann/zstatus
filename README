@@ -12,7 +12,11 @@ Usage:
 
   Edit .config/sway/config
 
-    status_command /path/to/zstatus
+    status_command /path/to/zstatus <latitude> <longitude>
+
+    Example:
+
+    status_command /path/to/zstatus 47.374 8.531
 
 License:
 

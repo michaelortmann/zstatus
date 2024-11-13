@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2024 Michael Ortmann
 
-// TODO Weather URL should be command line arg
 // TODO If EndOFStream show lag of temperature
 // TODO Fetch zenith and dusk once a day https://wttr.in/pdx?format=zenith%20%z%20dusk%20%d"
 
@@ -14,6 +13,16 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     var storage = std.ArrayList(u8).init(allocator);
+    const argv = std.os.argv;
+    const progname = std.fs.path.basename(std.mem.span(argv[0]));
+
+    if (argv.len != 3) {
+        std.log.debug("{s}: error: Command-line options\nUsage: {s} <latitude> <longitude>", .{ progname, progname });
+        return;
+    }
+
+    var url_buf: [128]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "https://api.met.no/weatherapi/locationforecast/2.0/?lat={s}&lon={s}", .{ argv[1], argv[2] });
     var next_minute_30: i128 = 0;
     const second = 1_000_000_000; // 1 second in nanoseconds
     const minute_30 = 30 * 60 * second; // 30 minutes in nanoseconds
@@ -24,8 +33,7 @@ pub fn main() !void {
 
     const fetch_options = std.http.Client.FetchOptions{
         .response_storage = .{ .dynamic = &storage },
-        // Hardcode never dies
-        .location = .{ .url = "https://api.met.no/weatherapi/locationforecast/2.0/?lat=47.374&lon=8.531" },
+        .location = .{ .url = url },
         .keep_alive = false,
         .headers = .{
             // https://api.met.no/doc/TermsOfService -> Legal stuff -> Identification
@@ -48,7 +56,7 @@ pub fn main() !void {
                     storage.clearRetainingCapacity();
                 }
             } else |err| switch (err) {
-                error.ConnectionRefused, error.ConnectionTimedOut, error.EndOfStream, error.TemporaryNameServerFailure => std.log.debug("err {}", .{err}),
+                error.ConnectionRefused, error.ConnectionTimedOut, error.EndOfStream, error.TemporaryNameServerFailure => std.log.debug("{s}: error: {}", .{ progname, err }),
                 else => return err,
             }
 
