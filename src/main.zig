@@ -26,6 +26,10 @@ pub fn main() !void {
         // Hardcode never dies
         .location = .{ .url = "https://api.met.no/weatherapi/locationforecast/2.0/?lat=47.374&lon=8.531" },
         .keep_alive = false,
+        .headers = .{
+            // https://api.met.no/doc/TermsOfService -> Legal stuff -> Identification
+            .user_agent = .{ .override = "user-agent: zig/" ++ builtin.zig_version_string ++ " (std.http) github.com/michaelortmann/zstatus" },
+        },
     };
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
     while (zeit.instant(.{})) |now| {
