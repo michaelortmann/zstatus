@@ -6,8 +6,8 @@
     .version = "0.0.1",
     .dependencies = .{
         .zeit = .{
-            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.4.3.tar.gz",
-            .hash = "1220b2fb6ce8df3e8fe244220199a932e1982d717f04f1127526201fa9be3c421ab2",
+            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.4.4.tar.gz",
+            .hash = "12204b653c90b503f89e2f1a73c4754b83fb7275c100c81872deaca12c9f17e334ec",
         },
     },
     .paths = .{""},
