@@ -6,6 +6,7 @@
 // TODO Fetch zenith and dusk once a day https://wttr.in/pdx?format=zenith%20%z%20dusk%20%d"
 
 const builtin = @import("builtin");
+const config = @import("config");
 const std = @import("std");
 const zeit = @import("zeit");
 
@@ -28,9 +29,10 @@ pub fn main() !void {
         .keep_alive = false,
         .headers = .{
             // https://api.met.no/doc/TermsOfService -> Legal stuff -> Identification
-            .user_agent = .{ .override = "user-agent: zig/" ++ builtin.zig_version_string ++ " (std.http) github.com/michaelortmann/zstatus" },
+            .user_agent = .{ .override = "user-agent: zig/" ++ builtin.zig_version_string ++ " (std.http) github.com/michaelortmann/zstatus " ++ config.git_commit },
         },
     };
+
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
     while (zeit.instant(.{})) |now| {
         if (now.timestamp >= next_minute_30) {
