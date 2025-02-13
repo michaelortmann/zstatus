@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2024 Michael Ortmann
+// Copyright (c) 2024 - 2025 Michael Ortmann
 
 // TODO If EndOFStream show lag of temperature
 // TODO Fetch zenith and dusk once a day https://wttr.in/pdx?format=zenith%20%z%20dusk%20%d"

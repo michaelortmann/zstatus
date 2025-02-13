@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2024 Michael Ortmann
+// Copyright (c) 2024 - 2025 Michael Ortmann
 
 const std = @import("std");
 
