@@ -6,6 +6,8 @@ Description:
 
   It updates the time every second and the temperature every 30 minutes.
 
+  Compatible with zig 0.14.1
+
 Usage:
 
   $ zig build

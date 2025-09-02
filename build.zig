@@ -14,13 +14,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const zeit = b.dependency("zeit", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    exe.root_module.addImport("zeit", zeit.module("zeit"));
-
     // Add build option config.git_commit;
     const options = b.addOptions();
     const git_commit = b.option([]const u8, "git-commit", "Git commit") orelse std.mem.trimRight(u8, b.run(&.{ "git", "rev-parse", "--verify", "HEAD" }), "\n");

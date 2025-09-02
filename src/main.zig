@@ -7,7 +7,6 @@
 const builtin = @import("builtin");
 const config = @import("config");
 const std = @import("std");
-const zeit = @import("zeit");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -28,9 +27,10 @@ pub fn main() !void {
     const minute_30 = 30 * 60 * second; // 30 minutes in nanoseconds
     var result_temperature: []u8 = "";
     var client = std.http.Client{ .allocator = allocator };
-    const local = try zeit.local(allocator, null);
+    const file = try std.fs.openFileAbsolute("/etc/localtime", .{});
+    const tz = try std.Tz.parse(allocator, file.reader());
+    file.close();
     var buffered_writer = std.io.bufferedWriter(std.io.getStdOut().writer());
-
     const fetch_options = std.http.Client.FetchOptions{
         .response_storage = .{ .dynamic = &storage },
         .location = .{ .url = url },
@@ -42,8 +42,9 @@ pub fn main() !void {
     };
 
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
-    while (zeit.instant(.{})) |now| {
-        if (now.timestamp >= next_minute_30) {
+    while (true) {
+        var now = std.time.timestamp();
+        if (now >= next_minute_30) {
             // Combine the if and switch expression
             // https://ziglang.org/documentation/master/#try
             if (client.fetch(fetch_options)) |fetch_result| {
@@ -59,21 +60,40 @@ pub fn main() !void {
                 error.ConnectionRefused, error.ConnectionTimedOut, error.EndOfStream, error.TemporaryNameServerFailure => std.log.debug("{s}: error: {}", .{ progname, err }),
                 else => return err,
             }
-
-            next_minute_30 = @divFloor(now.timestamp, minute_30) * minute_30 + minute_30;
+            next_minute_30 = @divFloor(now, minute_30) * minute_30 + minute_30;
         }
+        var offset: i32 = 0;
+        for (tz.transitions) |transition| {
+            if (now >= transition.ts) {
+                offset = transition.timetype.offset;
+            } else {
+                break;
+            }
+        }
+        now += offset;
 
-        const now_local = now.in(&local);
-        const dt_zeit = now_local.time();
+        // Rata Die
+        const days_since_epoch = @divFloor(now, std.time.s_per_day);
+        const z = days_since_epoch + 719468;
+        const doe = @mod(z, 146097);
+        const yoe = @divFloor(doe - @divFloor(doe, 1460) + @divFloor(doe, 36524) - @divFloor(doe, 146096), 365);
+        const doy = doe - (365 * yoe + @divFloor(yoe, 4) - @divFloor(yoe, 100));
+        const mp = @divFloor((5 * doy + 2), 153);
+        const day = doy - @divFloor((153 * mp + 2), 5) + 1;
+        const days = [_][]const u8{ "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed" };
+        const day_of_week = days[@intCast(@mod(@divFloor(now, std.time.s_per_day), 7))];
+        const hour = @abs(@mod(@divFloor(now, std.time.s_per_hour), 24));
+        const min = @abs(@mod(@divFloor(now, std.time.s_per_min), 60));
+        const sec = @abs(@mod(now, 60));
+
         // sway-bar(5)
         //   status_command <status command>
         //     Each line of text printed to stdout from this command will be displayed
         // by "line" a write to stdout is meant, not \n buffered line reading
-        _ = try buffered_writer.write(result_temperature);
-        try dt_zeit.strftime(buffered_writer.writer(), "°C %a %d %H:%M:%S");
+        try buffered_writer.writer().print("{s} °C {s} {d} {d:0>2}:{d:0>2}:{d:0>2}", .{ result_temperature, day_of_week, day, hour, min, sec });
         try buffered_writer.flush();
 
         // sleep until next second
-        std.time.sleep(@intCast(second - @mod(now.timestamp, second)));
-    } else |err| return err;
+        std.time.sleep(@intCast(second - @mod(std.time.nanoTimestamp(), second)));
+    }
 }
