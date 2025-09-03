@@ -6,7 +6,9 @@ Description:
 
   It updates the time every second and the temperature every 30 minutes.
 
-  Compatible with zig 0.14.1
+  Branch main is compatible with zig 0.14.1
+
+  Branch zig-0.16.0-dev is compatible with zig 0.16.0-dev.164+bc7955306
 
 Usage:
 
@@ -34,7 +36,6 @@ Website:
 Links and Thanks to everyone involved there:
 
   https://ziglang.org/
-  https://github.com/rockorager/zeit
   https://www.met.no/
   https://swaywm.org/
 
