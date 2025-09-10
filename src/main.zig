@@ -36,15 +36,13 @@ pub fn main() !void {
         .{ argv[1], argv[2] },
     );
     var response_buffer: [65536]u8 = undefined;
-    var response_writer = std.Io.Writer.fixed(&response_buffer);
-    const fetch_options = std.http.Client.FetchOptions{
+    var fetch_options = std.http.Client.FetchOptions{
         .headers = .{
             // https://api.met.no/doc/TermsOfService -> Legal stuff -> Identification
             .user_agent = .{ .override = "user-agent: zig/" ++ builtin.zig_version_string ++ " (std.http) github.com/michaelortmann/zstatus " ++ config.git_commit },
         },
         .keep_alive = false,
         .location = .{ .url = url },
-        .response_writer = &response_writer,
     };
 
     var result_temperature: []u8 = "";
@@ -63,6 +61,9 @@ pub fn main() !void {
     while (true) {
         var now = std.time.timestamp();
         if (now >= next_minute_30) {
+            // Renew writer, do not append
+            var response_writer = std.Io.Writer.fixed(&response_buffer);
+            fetch_options.response_writer = &response_writer;
             // Combine the if and switch expression
             // https://ziglang.org/documentation/master/#try
             if (client.fetch(fetch_options)) |fetch_result| {
