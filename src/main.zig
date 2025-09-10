@@ -24,7 +24,7 @@ pub fn main() !void {
     const url = try std.fmt.bufPrint(&url_buf, "https://api.met.no/weatherapi/locationforecast/2.0/?lat={s}&lon={s}", .{ argv[1], argv[2] });
     var next_minute_30: i128 = 0;
     const second = 1_000_000_000; // 1 second in nanoseconds
-    const minute_30 = 30 * 60 * second; // 30 minutes in nanoseconds
+    const minute_30 = 30 * 60; // 30 minutes in nanoseconds
     var result_temperature: []u8 = "";
     var client = std.http.Client{ .allocator = allocator };
     const file = try std.fs.openFileAbsolute("/etc/localtime", .{});
