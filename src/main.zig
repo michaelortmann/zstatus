@@ -23,7 +23,7 @@ pub fn main() !void {
     var next_minute_30: i128 = 0;
 
     const second = 1_000_000_000; // 1 second in nanoseconds
-    const minute_30 = 30 * 60 * second; // 30 minutes in nanoseconds
+    const minute_30 = 30 * 60; // 30 minutes in nanoseconds
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
