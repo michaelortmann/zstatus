@@ -27,8 +27,11 @@ pub fn main() !void {
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    var client = std.http.Client{ .allocator = allocator };
 
+    var threaded: std.Io.Threaded = .init(allocator);
+    const io = threaded.io();
+
+    var client = std.http.Client{ .allocator = allocator, .io = io };
     var url_buf: [128]u8 = undefined;
     // Alternative:
     // https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current_weather=true
@@ -48,16 +51,17 @@ pub fn main() !void {
         .location = .{ .url = url },
     };
 
-    var temperature: []u8 = undefined;
+    var temperature: []const u8 = undefined;
 
     const file = try std.fs.openFileAbsolute("/etc/localtime", .{});
     var file_buffer: [4096]u8 = undefined;
-    var file_reader = file.reader(&file_buffer);
+    var file_reader = file.reader(io, &file_buffer);
     const tz = try std.Tz.parse(allocator, &file_reader.interface);
     file.close();
 
     // Precompute current timezone offset and next transition
-    var now = std.time.timestamp();
+    var timestamp = try std.Io.Clock.Timestamp.now(io, .real);
+    var now = timestamp.raw.toSeconds();
     var offset: i32 = 0;
     var next_transition: usize = undefined;
     for (tz.transitions, 0..) |transition, i| {
@@ -74,7 +78,7 @@ pub fn main() !void {
     const stdout = &stdout_writer.interface;
 
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
-    while (true) : (now = std.time.timestamp()) {
+    while (true) {
         if (now >= next_minute_30) {
             // Renew writer, do not append
             var response_writer = std.Io.Writer.fixed(&response_buffer);
@@ -87,9 +91,15 @@ pub fn main() !void {
                     const start = 438 + i.? + 19;
                     i = std.mem.indexOf(u8, response_buffer[start..], ",");
                     temperature = response_buffer[start .. start + i.?];
+                } else {
+                    std.debug.print("{s}: error: fetch_result.status: {}", .{ progname, fetch_result.status });
+                    temperature = "?";
                 }
             } else |err| switch (err) {
-                error.ConnectionRefused, error.ConnectionTimedOut, error.TemporaryNameServerFailure => std.log.debug("{s}: error: {}", .{ progname, err }),
+                error.ConnectionRefused, error.NameServerFailure => {
+                    std.debug.print("{s}: error: {}", .{ progname, err });
+                    temperature = "?";
+                },
                 else => return err,
             }
             next_minute_30 = @divFloor(now, minute_30) * minute_30 + minute_30;
@@ -125,6 +135,9 @@ pub fn main() !void {
         try stdout.print("{s} °C {s} {d} {d:0>2}:{d:0>2}:{d:0>2}", .{ temperature, day_of_week, day, hour, min, sec });
         try stdout.flush();
         // sleep until next second
-        std.Thread.sleep(@intCast(second - @mod(std.time.nanoTimestamp(), second)));
+        try std.Io.Clock.Duration.sleep(.{ .clock = .boot, .raw = .fromNanoseconds(@intCast(second - @mod(timestamp.raw.toNanoseconds(), second))) }, io);
+
+        timestamp = try std.Io.Clock.Timestamp.now(io, .real);
+        now = timestamp.raw.toSeconds();
     }
 }
