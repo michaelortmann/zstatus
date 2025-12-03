@@ -20,10 +20,11 @@ pub fn main() !void {
         return;
     }
 
-    var next_minute_30: i128 = 0;
+    var next_fetch_time: i128 = 0;
 
     const second = 1_000_000_000; // 1 second in nanoseconds
-    const minute_30 = 30 * 60; // 30 minutes in nanoseconds
+    const minute_3 = 3 * 60; // 3 minutes in seconds
+    const minute_30 = 30 * 60; // 30 minutes seconds
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -79,7 +80,7 @@ pub fn main() !void {
 
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
     while (true) {
-        if (now >= next_minute_30) {
+        if (now >= next_fetch_time) {
             // Renew writer, do not append
             var response_writer = std.Io.Writer.fixed(&response_buffer);
             fetch_options.response_writer = &response_writer;
@@ -95,14 +96,15 @@ pub fn main() !void {
                     std.debug.print("{s}: error: fetch_result.status: {}", .{ progname, fetch_result.status });
                     temperature = "?";
                 }
+                next_fetch_time = @divFloor(now, minute_30) * minute_30 + minute_30;
             } else |err| switch (err) {
                 error.ConnectionRefused, error.NameServerFailure => {
                     std.debug.print("{s}: error: {}", .{ progname, err });
                     temperature = "?";
+                    next_fetch_time = @divFloor(now, minute_30) * minute_30 + minute_3;
                 },
                 else => return err,
             }
-            next_minute_30 = @divFloor(now, minute_30) * minute_30 + minute_30;
         }
 
         // Next timezone transition?
