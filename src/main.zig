@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2024 - 2025 Michael Ortmann
+// Copyright (c) 2024 - 2026 Michael Ortmann
 
 // TODO: If EndOFStream show lag of temperature
 // TODO: Fetch zenith and dusk once a day https://wttr.in/pdx?format=zenith%20%z%20dusk%20%d"
@@ -8,11 +8,11 @@ const builtin = @import("builtin");
 const config = @import("config");
 const std = @import("std");
 
-pub fn main() !void {
-    const argv = std.os.argv;
-    const progname = std.fs.path.basename(std.mem.span(argv[0]));
+pub fn main(init: std.process.Init) !void {
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    const progname = std.fs.path.basename(args[0]);
 
-    if (argv.len != 3) {
+    if (args.len != 3) {
         std.log.debug(
             "{s}: error: Command-line options\nUsage: {s} <latitude> <longitude>",
             .{ progname, progname },
@@ -29,8 +29,9 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var threaded: std.Io.Threaded = .init(allocator);
-    const io = threaded.io();
+    // var threaded: std.Io.Threaded = .init(allocator);
+    // const io = threaded.io();
+    const io = init.io;
 
     var client = std.http.Client{ .allocator = allocator, .io = io };
     var url_buf: [128]u8 = undefined;
@@ -40,7 +41,7 @@ pub fn main() !void {
     const url = try std.fmt.bufPrint(
         &url_buf,
         "https://api.met.no/weatherapi/locationforecast/2.0/?lat={s}&lon={s}",
-        .{ argv[1], argv[2] },
+        .{ args[1], args[2] },
     );
     var response_buffer: [65536]u8 = undefined;
     var fetch_options = std.http.Client.FetchOptions{
@@ -54,11 +55,11 @@ pub fn main() !void {
 
     var temperature: []const u8 = undefined;
 
-    const file = try std.fs.openFileAbsolute("/etc/localtime", .{});
+    const file = try std.Io.Dir.openFileAbsolute(io, "/etc/localtime", .{});
     var file_buffer: [4096]u8 = undefined;
     var file_reader = file.reader(io, &file_buffer);
     const tz = try std.Tz.parse(allocator, &file_reader.interface);
-    file.close();
+    file.close(io);
 
     // Precompute current timezone offset and next transition
     var timestamp = try std.Io.Clock.Timestamp.now(io, .real);
@@ -75,7 +76,7 @@ pub fn main() !void {
     }
 
     var stdout_buffer: [128]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
@@ -88,6 +89,9 @@ pub fn main() !void {
             // https://ziglang.org/documentation/master/#try
             if (client.fetch(fetch_options)) |fetch_result| {
                 if (fetch_result.status == .ok) {
+                    // if (fetch_result.headers.getFirstValue("Expires")) |expires| {
+                    //     std.debug.print("Expires header: {s}\n", .{expires});
+                    // }
                     var i = std.mem.indexOf(u8, response_buffer[438..], ",\"air_temperature\":");
                     const start = 438 + i.? + 19;
                     i = std.mem.indexOf(u8, response_buffer[start..], ",");
@@ -101,7 +105,7 @@ pub fn main() !void {
                 error.ConnectionRefused, error.NameServerFailure => {
                     std.debug.print("{s}: error: {}", .{ progname, err });
                     temperature = "?";
-                    next_fetch_time = @divFloor(now, minute_30) * minute_30 + minute_3;
+                    next_fetch_time = @divFloor(now, minute_3) * minute_3 + minute_3;
                 },
                 else => return err,
             }

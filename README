@@ -8,7 +8,7 @@ Description:
 
   Branch main is compatible with zig 0.14.1
 
-  Branch zig-0.16.0-dev is compatible with zig 0.16.0-dev.1412
+  Branch zig-0.16.0-dev is compatible with zig 0.16.0-dev.2193
 
 Usage:
 
@@ -25,7 +25,7 @@ Usage:
 License:
 
   MIT License
-  Copyright (c) 2024 - 2025 Michael Ortmann
+  Copyright (c) 2024 - 2026 Michael Ortmann
 
   Data from MET Norway
 
