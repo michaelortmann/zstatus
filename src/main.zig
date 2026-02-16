@@ -102,7 +102,7 @@ pub fn main(init: std.process.Init) !void {
                 }
                 next_fetch_time = @divFloor(now, minute_30) * minute_30 + minute_30;
             } else |err| switch (err) {
-                error.ConnectionRefused, error.NameServerFailure => {
+                error.ConnectionRefused, error.NameServerFailure, error.Timeout => {
                     std.debug.print("{s}: error: {}", .{ progname, err });
                     temperature = "?";
                     next_fetch_time = @divFloor(now, minute_3) * minute_3 + minute_3;
