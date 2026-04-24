@@ -1,87 +1,133 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2024 - 2025 Michael Ortmann
+// Copyright (c) 2024 - 2026 Michael Ortmann
 
-// TODO If EndOFStream show lag of temperature
-// TODO Fetch zenith and dusk once a day https://wttr.in/pdx?format=zenith%20%z%20dusk%20%d"
+// TODO: If EndOFStream show lag of temperature
+// TODO: Fetch zenith and dusk once a day https://wttr.in/pdx?format=zenith%20%z%20dusk%20%d"
 
 const builtin = @import("builtin");
 const config = @import("config");
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var storage = std.ArrayList(u8).init(allocator);
-    const argv = std.os.argv;
-    const progname = std.fs.path.basename(std.mem.span(argv[0]));
+pub fn main(init: std.process.Init) !void {
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    const progname = std.fs.path.basename(args[0]);
 
-    if (argv.len != 3) {
-        std.log.debug("{s}: error: Command-line options\nUsage: {s} <latitude> <longitude>", .{ progname, progname });
+    if (args.len != 3) {
+        std.log.debug(
+            "{s}: error: Command-line options\nUsage: {s} <latitude> <longitude>",
+            .{ progname, progname },
+        );
         return;
     }
 
-    var url_buf: [128]u8 = undefined;
-    const url = try std.fmt.bufPrint(&url_buf, "https://api.met.no/weatherapi/locationforecast/2.0/?lat={s}&lon={s}", .{ argv[1], argv[2] });
-    var next_minute_30: i128 = 0;
+    var next_fetch_time: i128 = 0;
+
     const second = 1_000_000_000; // 1 second in nanoseconds
-    const minute_30 = 30 * 60; // 30 minutes in nanoseconds
-    var result_temperature: []u8 = "";
-    var client = std.http.Client{ .allocator = allocator };
-    const file = try std.fs.openFileAbsolute("/etc/localtime", .{});
-    const tz = try std.Tz.parse(allocator, file.reader());
-    file.close();
-    var buffered_writer = std.io.bufferedWriter(std.io.getStdOut().writer());
-    const fetch_options = std.http.Client.FetchOptions{
-        .response_storage = .{ .dynamic = &storage },
-        .location = .{ .url = url },
-        .keep_alive = false,
+    const minute_3 = 3 * 60; // 3 minutes in seconds
+    const minute_30 = 30 * 60; // 30 minutes seconds
+
+    // var threaded: std.Io.Threaded = .init(allocator);
+    // const io = threaded.io();
+    const allocator = init.arena.allocator();
+    const io = init.io;
+
+    var client = std.http.Client{ .allocator = allocator, .io = io };
+    var url_buf: [128]u8 = undefined;
+    // Alternative:
+    // https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current_weather=true
+    // temperature = data['current_weather']['temperature']
+    const url = try std.fmt.bufPrint(
+        &url_buf,
+        "https://api.met.no/weatherapi/locationforecast/2.0/?lat={s}&lon={s}",
+        .{ args[1], args[2] },
+    );
+    var response_buffer: [65536]u8 = undefined;
+    var fetch_options = std.http.Client.FetchOptions{
         .headers = .{
             // https://api.met.no/doc/TermsOfService -> Legal stuff -> Identification
             .user_agent = .{ .override = "user-agent: zig/" ++ builtin.zig_version_string ++ " (std.http) github.com/michaelortmann/zstatus " ++ config.git_commit },
         },
+        .keep_alive = false,
+        .location = .{ .url = url },
     };
+
+    var temperature: []const u8 = undefined;
+
+    const file = try std.Io.Dir.openFileAbsolute(io, "/etc/localtime", .{});
+    var file_buffer: [4096]u8 = undefined;
+    var file_reader = file.reader(io, &file_buffer);
+    const tz = try std.Tz.parse(allocator, &file_reader.interface);
+    file.close(io);
+
+    // Precompute current timezone offset and next transition
+    var timestamp = std.Io.Clock.Timestamp.now(io, .real);
+    var now = timestamp.raw.toSeconds();
+    var offset: i32 = 0;
+    var next_transition: usize = undefined;
+    for (tz.transitions, 0..) |transition, i| {
+        if (now >= transition.ts) {
+            offset = transition.timetype.offset;
+        } else {
+            next_transition = i;
+            break;
+        }
+    }
+
+    var stdout_buffer: [128]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
     // https://ziglang.org/documentation/master/#while-with-Error-Unions
     while (true) {
-        var now = std.time.timestamp();
-        if (now >= next_minute_30) {
+        if (now >= next_fetch_time) {
+            // Renew writer, do not append
+            var response_writer = std.Io.Writer.fixed(&response_buffer);
+            fetch_options.response_writer = &response_writer;
             // Combine the if and switch expression
             // https://ziglang.org/documentation/master/#try
             if (client.fetch(fetch_options)) |fetch_result| {
                 if (fetch_result.status == .ok) {
-                    // result_temperature = storage.items;
-                    var i = std.mem.indexOf(u8, storage.items[438..], ",\"air_temperature\":");
+                    // if (fetch_result.headers.getFirstValue("Expires")) |expires| {
+                    //     std.debug.print("Expires header: {s}\n", .{expires});
+                    // }
+                    var i = std.mem.indexOf(u8, response_buffer[438..], ",\"air_temperature\":");
                     const start = 438 + i.? + 19;
-                    i = std.mem.indexOf(u8, storage.items[start..], ",");
-                    result_temperature = storage.items[start .. start + i.?];
-                    storage.clearRetainingCapacity();
+                    i = std.mem.indexOf(u8, response_buffer[start..], ",");
+                    temperature = response_buffer[start .. start + i.?];
+                } else {
+                    std.debug.print("{s}: error: fetch_result.status: {}", .{ progname, fetch_result.status });
+                    temperature = "?";
                 }
+                next_fetch_time = @divFloor(now, minute_30) * minute_30 + minute_30;
             } else |err| switch (err) {
-                error.ConnectionRefused, error.ConnectionTimedOut, error.EndOfStream, error.TemporaryNameServerFailure => std.log.debug("{s}: error: {}", .{ progname, err }),
+                error.ConnectionRefused, error.NameServerFailure, error.Timeout => {
+                    std.debug.print("{s}: error: {}", .{ progname, err });
+                    temperature = "?";
+                    next_fetch_time = @divFloor(now, minute_3) * minute_3 + minute_3;
+                },
                 else => return err,
             }
-            next_minute_30 = @divFloor(now, minute_30) * minute_30 + minute_30;
         }
-        var offset: i32 = 0;
-        for (tz.transitions) |transition| {
-            if (now >= transition.ts) {
-                offset = transition.timetype.offset;
-            } else {
-                break;
-            }
+
+        // Next timezone transition?
+        if (now >= tz.transitions[next_transition].ts) {
+            offset = tz.transitions[next_transition].timetype.offset;
+            next_transition += 1;
         }
+        // Add timezone offset
         now += offset;
 
         // Rata Die
+        // TODO: Precompute and increment daily
         const days_since_epoch = @divFloor(now, std.time.s_per_day);
         const z = days_since_epoch + 719468;
         const doe = @mod(z, 146097);
         const yoe = @divFloor(doe - @divFloor(doe, 1460) + @divFloor(doe, 36524) - @divFloor(doe, 146096), 365);
+        const days = [_][]const u8{ "Th", "Fr", "Sa", "Su", "Mo", "Tu", "We" };
         const doy = doe - (365 * yoe + @divFloor(yoe, 4) - @divFloor(yoe, 100));
         const mp = @divFloor((5 * doy + 2), 153);
-        const day = doy - @divFloor((153 * mp + 2), 5) + 1;
-        const days = [_][]const u8{ "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed" };
         const day_of_week = days[@intCast(@mod(@divFloor(now, std.time.s_per_day), 7))];
+        const day = doy - @divFloor((153 * mp + 2), 5) + 1;
         const hour = @abs(@mod(@divFloor(now, std.time.s_per_hour), 24));
         const min = @abs(@mod(@divFloor(now, std.time.s_per_min), 60));
         const sec = @abs(@mod(now, 60));
@@ -90,10 +136,12 @@ pub fn main() !void {
         //   status_command <status command>
         //     Each line of text printed to stdout from this command will be displayed
         // by "line" a write to stdout is meant, not \n buffered line reading
-        try buffered_writer.writer().print("{s} °C {s} {d} {d:0>2}:{d:0>2}:{d:0>2}", .{ result_temperature, day_of_week, day, hour, min, sec });
-        try buffered_writer.flush();
-
+        try stdout.print("{s} °C {s} {d} {d:0>2}:{d:0>2}:{d:0>2}", .{ temperature, day_of_week, day, hour, min, sec });
+        try stdout.flush();
         // sleep until next second
-        std.time.sleep(@intCast(second - @mod(std.time.nanoTimestamp(), second)));
+        try std.Io.Clock.Duration.sleep(.{ .clock = .boot, .raw = .fromNanoseconds(@intCast(second - @mod(timestamp.raw.toNanoseconds(), second))) }, io);
+
+        timestamp = std.Io.Clock.Timestamp.now(io, .real);
+        now = timestamp.raw.toSeconds();
     }
 }
