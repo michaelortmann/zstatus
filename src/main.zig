@@ -61,7 +61,8 @@ pub fn main(init: std.process.Init) !void {
 
     // Precompute current timezone offset and next transition
     var timestamp = std.Io.Clock.Timestamp.now(io, .real);
-    var now = timestamp.raw.toSeconds();
+    // assume now > epoch0
+    var now: u64 = @intCast(timestamp.raw.toSeconds());
     var offset: i32 = 0;
     var next_transition: usize = undefined;
     for (tz.transitions, 0..) |transition, i| {
@@ -98,12 +99,12 @@ pub fn main(init: std.process.Init) !void {
                     std.debug.print("{s}: error: fetch_result.status: {}", .{ progname, fetch_result.status });
                     temperature = "?";
                 }
-                next_fetch_time = @divFloor(now, minute_30) * minute_30 + minute_30;
+                next_fetch_time = now / minute_30 * minute_30 + minute_30;
             } else |err| switch (err) {
                 error.ConnectionRefused, error.NameServerFailure, error.Timeout => {
                     std.debug.print("{s}: error: {}", .{ progname, err });
                     temperature = "?";
-                    next_fetch_time = @divFloor(now, minute_3) * minute_3 + minute_3;
+                    next_fetch_time = now / minute_3 * minute_3 + minute_3;
                 },
                 else => return err,
             }
@@ -115,22 +116,22 @@ pub fn main(init: std.process.Init) !void {
             next_transition += 1;
         }
         // Add timezone offset
-        now += offset;
+        now = @intCast(@as(i64, @intCast(now)) + offset);
 
         // Rata Die
         // TODO: Precompute and increment daily
-        const days_since_epoch = @divFloor(now, std.time.s_per_day);
+        const days_since_epoch = now / std.time.s_per_day;
         const z = days_since_epoch + 719468;
-        const doe = @mod(z, 146097);
-        const yoe = @divFloor(doe - @divFloor(doe, 1460) + @divFloor(doe, 36524) - @divFloor(doe, 146096), 365);
+        const doe = z % 146097;
+        const yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
         const days = [_][]const u8{ "Th", "Fr", "Sa", "Su", "Mo", "Tu", "We" };
-        const doy = doe - (365 * yoe + @divFloor(yoe, 4) - @divFloor(yoe, 100));
-        const mp = @divFloor((5 * doy + 2), 153);
-        const day_of_week = days[@intCast(@mod(@divFloor(now, std.time.s_per_day), 7))];
-        const day = doy - @divFloor((153 * mp + 2), 5) + 1;
-        const hour = @abs(@mod(@divFloor(now, std.time.s_per_hour), 24));
-        const min = @abs(@mod(@divFloor(now, std.time.s_per_min), 60));
-        const sec = @abs(@mod(now, 60));
+        const doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        const mp = (5 * doy + 2) / 153;
+        const day_of_week = days[days_since_epoch % 7];
+        const day = doy - (153 * mp + 2) / 5 + 1;
+        const hour = (now / std.time.s_per_hour) % 24;
+        const min = (now / std.time.s_per_min) % 60;
+        const sec = now % 60;
 
         // sway-bar(5)
         //   status_command <status command>
@@ -142,6 +143,6 @@ pub fn main(init: std.process.Init) !void {
         try std.Io.Clock.Duration.sleep(.{ .clock = .boot, .raw = .fromNanoseconds(@intCast(second - @mod(timestamp.raw.toNanoseconds(), second))) }, io);
 
         timestamp = std.Io.Clock.Timestamp.now(io, .real);
-        now = timestamp.raw.toSeconds();
+        now = @intCast(timestamp.raw.toSeconds());
     }
 }
